@@ -1,0 +1,141 @@
+
+Problem Statement 3: Explain the code snippet
+
+Explain what the following code is attempting to do? You can explain by:
+Explaining how the highlighted constructs work?
+Giving use-cases of what these constructs could be used for.
+What is the significance of the for loop with 4 iterations?
+What is the significance of make(chan func(), 10)?
+Why is “HERE1” not getting printed?
+
+package main
+
+import "fmt"
+
+func main() {
+    cnp := make(chan func(), 10)
+    for i := 0; i < 4; i++ {
+        go func() {
+            for f := range cnp {
+                f()
+            }
+        }()
+    }
+    cnp <- func() {
+        fmt.Println("HERE1")
+    }
+    fmt.Println("Hello")
+}
+
+
+
+
+
+_____________________________________________________________________________________________________________________________________________________________________________________________________________________
+
+
+
+
+
+1. Channel Creation (make(chan func(), 10))
+go
+cnp := make(chan func(), 10)
+Creates a buffered channel that can hold up to 10 func() values
+
+The channel carries functions that take no arguments and return nothing
+
+The buffer size of 10 means it can hold 10 functions before blocking on sends
+
+2. For Loop with 4 Iterations
+go
+for i := 0; i < 4; i++ {
+    go func() {
+        for f := range cnp {
+            f()
+        }
+    }()
+}
+Starts 4 goroutines (lightweight threads)
+
+Each goroutine:
+
+Continuously receives functions from the channel (range cnp)
+
+Executes each received function (f())
+
+The 4 iterations mean we have 4 concurrent workers all processing functions from the same channel
+
+This is a common worker pool pattern where multiple workers process jobs from a shared queue
+
+3. Sending a Function to the Channel
+go
+cnp <- func() {
+    fmt.Println("HERE1")
+}
+Sends an anonymous function to the channel
+
+The function, when executed, will print "HERE1"
+
+4. Why "HERE1" Doesn't Get Printed
+The main goroutine sends the function to the channel but exits immediately after printing "Hello"
+
+When the main goroutine exits, the program terminates, killing all child goroutines
+
+There's a race condition - the worker goroutines might not get a chance to:
+
+Receive the function from the channel
+
+Execute it
+before the program exits
+
+5. Use Cases
+This pattern is useful for:
+
+Worker pools where you want to distribute tasks across multiple goroutines
+
+Asynchronous task processing
+
+Controlling concurrency (here limited to 4 workers)
+
+Building event-driven systems where functions represent events
+
+6. How to Fix It
+To ensure "HERE1" gets printed, you could:
+
+Add a synchronization mechanism (like sync.WaitGroup)
+
+Add a small sleep before main exits (not recommended for production)
+
+Close the channel and have workers exit when done (more elegant)
+
+Example Fix:
+go
+package main
+
+import (
+    "fmt"
+    "sync"
+)
+
+func main() {
+    var wg sync.WaitGroup
+    cnp := make(chan func(), 10)
+    
+    for i := 0; i < 4; i++ {
+        wg.Add(1)
+        go func() {
+            defer wg.Done()
+            for f := range cnp {
+                f()
+            }
+        }()
+    }
+    
+    cnp <- func() {
+        fmt.Println("HERE1")
+    }
+    
+    close(cnp) // Close channel to signal workers to exit
+    wg.Wait()  // Wait for all workers to finish
+    fmt.Println("Hello")
+}
